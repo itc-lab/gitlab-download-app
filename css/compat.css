@@ -1,0 +1,20 @@
+body, td {
+	font-family: Tahoma, sans-serif, "Meiryo UI";
+	font-size: 14px;
+}
+
+input, select {
+	font-family: Tahoma, sans-serif, "Meiryo UI";
+	font-size: 13px;
+}
+
+option {
+	font-family: Tahoma, sans-serif, "Meiryo UI";
+	height: 13px;
+	padding: 0;
+	font-size: 13px;
+}
+
+textarea {
+	resize: none;
+}

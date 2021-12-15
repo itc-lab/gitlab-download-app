@@ -1,0 +1,1287 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title></title>
+<link rel="stylesheet" href="/js/SlickGrid/slick.grid.css" type="text/css"/>
+<link rel="stylesheet" href="/js/jquery/jquery-ui-1.10.2.custom.css" type="text/css"/>
+<link rel="stylesheet" href="/js/SlickGrid/examples/examples.css" type="text/css"/>
+<link rel="stylesheet" href="/js/SlickGrid/controls/slick.columnpicker.css" type="text/css"/>
+<link rel="stylesheet" href="/css/compat.css" type="text/css">
+
+<style type="text/css">
+	* {
+		font-size: 16px;
+	}
+	html, body {
+		margin: 0;
+		padding: 0;
+	}
+	body {
+		background: white;
+	}
+	select {
+		min-width: 160px;
+	}
+	.text-center {
+		text-align: center;
+	}
+	#progress-bar {
+		width: 320px;
+	}
+	.progress-label {
+		font-size: 1.4em;
+		padding: 24px 0 0;
+	}
+	.ui-dialog {
+		z-index: 10000 !important;
+	}
+	div.ui-tooltip {
+		max-width: 800px;
+		white-space: pre-line;
+	}
+	.ui-tooltip-content {
+		font-size: 14px;
+	}
+	.fit_parent {
+		display: inline-block;
+		width: 100%;
+	}
+</style>
+
+<script src="/js/SlickGrid/lib/jquery-1.11.2.js"></script>
+<script src="/js/SlickGrid/lib/jquery-ui-1.11.3.js"></script>
+<script src="/js/SlickGrid/lib/jquery.event.drag-2.3.0.js"></script>
+<script src="/js/jquery/jquery.blockUI.js"></script>
+<script src="/js/SlickGrid/slick.core.js"></script>
+<script src="/js/SlickGrid/slick.grid.js"></script>
+<script src="/js/SlickGrid/slick.editors.js"></script>
+<script src="/js/SlickGrid/plugins/slick.checkboxselectcolumn.js"></script>
+<script src="/js/SlickGrid/plugins/slick.rowselectionmodel.js"></script>
+<script src="/js/SlickGrid/plugins/slick.resizer.js"></script>
+<script src="/js/SlickGrid/slick.dataview.js"></script>
+<script src="/js/SlickGrid/controls/slick.columnpicker.js"></script>
+
+<script type="text/javascript">
+//<!--
+	var seed_version = '1.0.0';
+	var dataView;
+	var grid;
+	var griddata = [];
+	var columns = [];
+	var sortcol = '';
+	var sortdir = 1;
+	var config = {};
+	var groups = [];
+	var projects = [];
+	var branches = [];
+	var tags = [];
+	var commits = [];
+	var project_no = 0;
+	var branch_no = 0;
+	var request_page;
+	var per_page = 100;
+	var download_projects = [];
+	var request_id;
+	var download_type;
+	var download_files = {};
+	var unique_id;
+	var timer_id;
+	var cancel_request = false;
+
+	////////////////////////////////////////////////////////////////////
+	$( document ).ready( function() {
+		console.log( 'start: ', new Date() );
+		$.getJSON( './config.json?' + Math.random(), ( data ) => {
+			config = data;
+			console.log( 'config: ', config );
+			var cache = [];
+			if ( config['cache_projects'] == 1 ) {
+				$( '#reload_repository' ).css( 'visibility', '' );
+				get_projects( function( response ) {
+					cache = response['projects'];
+					console.log( cache );
+					if ( cache.length != 0 ) {
+						projects = cache;
+						create_commits_table();
+						create_griddata( true );
+					} else {
+						startWaiting();
+						request_page = 1;
+						request_projects();
+					}
+				} );
+			} else {
+				startWaiting();
+				request_page = 1;
+				request_projects();
+			}
+		} );
+
+		$( document ).tooltip( {
+			show: 10, hide: 10
+		} )
+		.off( 'focusin focusout' );;
+
+		document.addEventListener( "nativemesssampleRecvMsg", function( event ) {
+			stopWaiting();
+			if ( event.type == 'nativemesssampleRecvMsg' ) {
+				var detail = JSON.parse( event['detail'] );
+				if ( detail['message'] == 'downloaded' ) {
+					if ( detail['result'] != '' ) {
+						alert( detail['result'] );
+					}
+				}
+			}
+		} );
+
+		$( '#download_all' ).on( 'click', function(event) {
+			download_all( event.shiftKey && event.ctrlKey );
+		} );
+
+		$( '#download_commits' ).on( 'click', function(event) {
+			download_commits( event.shiftKey && event.ctrlKey );
+		} );
+
+		$( '#target_group' ).on( 'change', function() {
+			create_griddata();
+		} );
+
+		$( '#target_branch' ).on( 'change', function() {
+			create_griddata();
+		} );
+
+		$( '#download_all_type' ).prop( 'selectedIndex', 0 );
+		$( '#download_commits_type' ).prop( 'selectedIndex', 0 );
+		$( '#target_branch' ).prop( 'selectedIndex', 0 );
+
+		$( '#reload_repository' ).on( 'click', function() {
+			startWaiting();
+			projects = [];
+			request_page = 1;
+			console.log( 'start: ', new Date() );
+			request_projects();
+		} );
+
+		create_grid();
+	} );
+
+	////////////////////////////////////////////////////////////////////
+	function create_commits_table() {
+		for ( var n = 0; n < projects.length; n ++ ) {
+			var project = projects[n];
+			var branch = project['branch'];
+			for ( var m = 0; m < branch.length; m ++ ) {
+				var commits = search_commits( projects[n]['commits'], branch[m]['commit']['id'] );
+				branch[m]['commits'] = Object.values( commits );
+
+			}
+			var tag = project['tag'];
+			for ( var m = 0; m < tag.length; m ++ ) {
+				var commits = search_commits( projects[n]['commits'], tag[m]['commit']['id'] );
+				tag[m]['commits'] = Object.values( commits );
+			}
+		}
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function search_commits( commits, id ) {
+		var result = {};
+		for ( var n = 0; n < commits.length; n ++ ) {
+			if ( commits[n].id == id ) {
+				if ( !is_ignore_message( commits[n]['message'] ) ) {
+					result[n] = commits[n];
+				}
+				for ( var m = 0; m < commits[n]['parent_ids'].length; m ++ ) {
+					var val = search_commits( commits, commits[n]['parent_ids'][m] );
+					result = Object.assign( result, val );
+				}
+				break;
+			}
+		}
+		return result;
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function get_selected( get_all ) {
+		download_projects = [];
+		var selectedrows = grid.getSelectedRows();
+		var target_branch = $( '#target_branch' ).val();
+		selectedrows.forEach( function( row ) {
+			var value = dataView.getItem( row );
+			var item = {};
+			if ( target_branch == 'Branch' ) {
+				var branch = value['branches'][value['branch_no']];
+				var commits = get_all ? branch['commits'].slice( value['commit_no'] ) : [ branch['commits'][value['commit_no']] ];
+				var get_tree = get_all;
+				while ( commits.length ) {
+					var commit = commits.pop();
+					item = {
+						id: value.id,
+						path: value.path,
+						name: value.project,
+						commit: commit['id'],
+						time: new Date( commit['committed_date'] ).toGMTString()
+					};
+					if ( get_tree ) item['tree'] = true;
+					download_projects.push( item );
+					get_tree = false;
+				}
+			} else {
+				var tag = value['tags'][value['branch_no']];
+				var commits = get_all ? tag['commits'].slice( value['commit_no'] ) : [ tag['commits'][value['commit_no']] ];
+				var get_tree = get_all;
+				while ( commits.length ) {
+					var commit = commits.pop();
+					item = {
+						id: value.id,
+						path: value.path,
+						name: value.project,
+						commit: commit['id'],
+						time: new Date( commit['committed_date'] ).toGMTString()
+					};
+					if ( get_tree ) item['tree'] = true;
+					download_projects.push( item );
+					get_tree = false;
+				}
+			}
+		} );
+		console.log( 'download projects: ', download_projects );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function get_projects( done ) {
+		var params = {};
+		params['command'] = 'get_projects';
+		http_request( 'GET', './gitlabapp.php', params, {},
+			function( response ) {
+				console.log( response );
+				if ( response['result'] && response['result'] == 'OK' ) {
+					done( response );
+				} else {
+					alert( response['result'] );
+				}
+			},
+			function( response ) {
+				console.log( 'error: ', response );
+				stopWaiting();
+			} );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function put_projects( projects, done ) {
+		var params = {};
+		params['command'] = 'put_projects';
+		params['projects'] = JSON.stringify( projects );
+		http_request( 'POST', './gitlabapp.php', params, {},
+			function( response ) {
+				console.log( response );
+				if ( response['result'] && response['result'] == 'OK' ) {
+					done( response );
+				} else {
+					alert( response['result'] );
+				}
+			},
+			function( response ) {
+				console.log( 'error: ', response );
+				stopWaiting();
+			} );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function cache_check( type, done ) {
+		var params = {};
+		params['command'] = 'cache_check';
+		var seed = {};
+		seed['version'] = seed_version;
+		seed['type'] = type;
+		seed['file_type'] = download_type;
+		seed['including_project'] = $( '#including_project' ).prop( 'checked' );
+		seed['files'] = download_projects;
+		params['seed'] = JSON.stringify( seed );
+		console.log( params );
+		http_request( 'POST', './gitlabapp.php', params, {},
+			function( response ) {
+				console.log( response );
+				if ( response['result'] && response['result'] == 'OK' ) {
+					done( response );
+				} else {
+					alert( response['result'] );
+					stopWaiting();
+				}
+			},
+			function( response ) {
+				console.log( 'error: ', response );
+				stopWaiting();
+			} );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function request_cancel( hash, done ) {
+		var params = {};
+		params['command'] = 'cancel';
+		params['id'] = hash;
+		console.log( params );
+		http_request( 'POST', './gitlabapp.php', params, {},
+			function( response ) {
+				if ( response['result'] && response['result'] == 'OK' ) {
+					console.log( response );
+					done( response );
+				} else {
+					alert( response['result'] );
+					stopWaiting();
+				}
+			},
+			function( response ) {
+				console.log( 'error: ', response );
+				stopWaiting();
+			} );
+		return;
+	}
+
+
+	////////////////////////////////////////////////////////////////////
+	function download_all( clear_cache ) {
+		get_selected( true );
+		if ( download_projects.length == 0 ) {
+			return;
+		}
+		download_type = $( '#download_all_type' ).val();
+		cache_check( 'all', function( response ) {
+					if ( response['status'] == 'error' ) {
+						alert( 'ERROR : ハッシュが重複しました。' );
+					} else if ( response['status'] == 'busy' ) {
+						alert( 'その他でダウンロードが進行中です。しばらくお待ちください。' );
+					} else if ( response['status'] == 'ready' ) {
+						if ( clear_cache ) {
+							if ( confirm( 'キャッシュをクリアしますか？' ) ) {
+								request_cancel( response['hash'], function( response ) {
+									alert( 'キャッシュをクリアしました。' );
+								} );
+							}
+						} else {
+							var url = './gitlabapp.php?command=download&id=' + response['hash'];
+							document.getElementById( 'download_frame' ).src = url;
+						}
+					} else {
+						download_files = {};
+						project_no = 0;
+						request_hash = response['hash'];
+						startWaiting();
+						request_page = 1;
+						request_tree_diff();
+					}
+			} );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function download_commits( clear_cache ) {
+		get_selected( false );
+		if ( download_projects.length == 0 ) {
+			return;
+		}
+		download_type = $( '#download_commits_type' ).val();
+		cache_check( 'commit', function(  response	) {
+					if ( response['status'] == 'error' ) {
+						alert( 'ERROR : ハッシュが重複しました。' );
+					} else if ( response['status'] == 'busy' ) {
+						alert( 'その他でダウンロードが進行中です。しばらくお待ちください。' );
+					} else if ( response['status'] == 'ready' ) {
+						if ( clear_cache ) {
+							if ( confirm( 'キャッシュをクリアしますか？' ) ) {
+								request_cancel( response['hash'], function( response ) {
+									alert( 'キャッシュをクリアしました。' );
+								} );
+							}
+						} else {
+							var url = './gitlabapp.php?command=download&id=' + response['hash'];
+							document.getElementById( 'download_frame' ).src = url;
+						}
+					} else {
+						download_files = {};
+						project_no = 0;
+						request_hash = response['hash'];
+						startWaiting();
+						request_page = 1;
+						request_tree_diff();
+					}
+			} );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function succeed( type, response ) {
+		switch( type ) {
+
+		////	grid
+		case 'groups':
+			if ( response.length != 0 ) {
+				groups = groups.concat( response );
+			}
+			if ( response.length >= per_page ) {
+				request_page ++;
+				request_groups();
+			} else {
+				request_page = 1;
+				request_projects();
+			}
+			break;
+		case 'projects':
+			if ( response.length != 0 ) {
+				for ( var n = 0; n < response.length; n ++ ) {
+					if ( response[n].visibility != 'internal' ) {
+						projects[projects.length] = response[n];
+					}
+				}
+			}
+			if ( response.length >= per_page ) {
+				request_page ++;
+				request_projects();
+			} else {
+				projects.sort(function(a, b) {
+					if (a.name.toLowerCase() > b.name.toLowerCase()) return 1;
+					if (a.name.toLowerCase() < b.name.toLowerCase()) return -1;
+					if (Number(a.id) > Number(b.id)) return 1;
+					if (Number(a.id) < Number(b.id)) return -1;
+					return 0;
+				});
+				console.log( 'received projects: ', projects );
+				branches = [];
+				project_no = 0;
+				request_page = 1;
+				request_branches();
+			}
+			break;
+		case 'branches':
+			if ( !projects[project_no]['branch'] ) projects[project_no]['branch'] = [];
+			if ( response.length != 0 ) {
+				branches = branches.concat( response );
+				branches.sort(function(a, b) {
+					if (a.name > b.name) return 1;
+					if (a.name < b.name) return -1;
+					return 0;
+				});
+			} else if ( request_page == 1 ) {
+				projects.splice(project_no, 1);
+				project_no --;
+			}
+			if ( response.length  >= per_page ) {
+				request_page ++;
+				request_branches();
+			} else if ( ++ project_no < projects.length ) {
+				if ( branches.length != 0 ) {
+					projects[project_no-1]['branch'] = projects[project_no-1]['branch'].concat( branches );
+				}
+				branches = [];
+				request_page = 1;
+				request_branches();
+			} else {
+				if ( branches.length != 0 ) {
+					projects[project_no-1]['branch'] = projects[project_no-1]['branch'].concat( branches );
+				}
+				tags = [];
+				request_page = 1;
+				project_no = 0;
+				request_tags();
+			}
+			break;
+		case 'tags':
+			if ( !projects[project_no]['tag'] ) projects[project_no]['tag'] = [];
+			if ( response.length != 0 ) {
+				tags = tags.concat( response );
+			}
+			if ( response.length >= per_page ) {
+				request_page ++;
+				request_tags();
+			} else if ( ++ project_no < projects.length ) {
+				projects[project_no-1]['tag'] = projects[project_no-1]['tag'].concat( tags );
+				tags = [];
+				request_page = 1;
+				request_tags();
+			} else {
+				projects[project_no-1]['tag'] = projects[project_no-1]['tag'].concat( tags );
+				commits = [];
+				request_page = 1;
+				project_no = 0;
+				request_commits();
+			}
+			break;
+		case 'commits':
+			if ( !projects[project_no]['commits'] ) projects[project_no]['commits'] = [];
+			if ( response.length != 0 ) {
+				commits = response.concat( commits );
+			}
+			if ( response.length  >= per_page ) {
+				request_page ++;
+				request_commits();
+			} else if ( ++ project_no < projects.length ) {
+				projects[project_no-1]['commits'] = projects[project_no-1]['commits'].concat( commits.reverse() );
+				commits = [];
+				request_page = 1;
+				request_commits();
+			} else {
+				projects[project_no-1]['commits'] = projects[project_no-1]['commits'].concat( commits.reverse() );
+				console.log( 'projects: ', projects );
+				put_projects( projects, function( response ) {
+					create_commits_table();
+					create_griddata( true );
+					stopWaiting();
+					console.log( 'end: ', new Date() );
+				} );
+			}
+			break;
+
+		////	download
+		case 'tree':
+			if ( response.length != 0 ) {
+				for ( var n = 0; n < response.length; n ++ ) {
+					if ( response[n].type == 'blob' ) {
+						response[n]['project'] = download_projects[project_no].id;
+						response[n]['time'] = download_projects[project_no].time;
+						response[n]['commit'] = request_commit;
+						var path = response[n].path;
+						if ( $( '#including_project' ).prop( 'checked' ) ) {
+							path = download_projects[project_no]['name'] + '/' + path;
+						}
+						path = 'gitlab/' + path;
+						download_files[path] = response[n];
+					}
+				}
+			}
+			if ( response.length >= per_page ) {
+				request_page ++;
+				request_tree();
+			} else {
+				if ( ++ project_no < download_projects.length ) {
+					request_page = 1;
+					request_tree_diff();
+				} else {
+					download_start();
+				}
+			}
+			break;
+		case 'diff':
+			if ( response.length != 0 ) {
+				for ( var n = 0; n < response.length; n ++ ) {
+					response[n]['project'] = download_projects[project_no].id;
+					response[n]['time'] = download_projects[project_no].time;
+					response[n]['commit'] = request_commit;
+					response[n]['path'] = response[n]['new_path'];
+					var path = response[n]['new_path'];
+					if ( $( '#including_project' ).prop( 'checked' ) ) {
+						path = download_projects[project_no]['name'] + '/' + path;
+					}
+					path = 'gitlab/' + path;
+					if ( response[n]['deleted_file'] ) {
+						if ( download_files[path] ) delete download_files[path];
+					} else {
+						download_files[path] = response[n];
+					}
+				}
+			}
+			if ( response.length >= per_page ) {
+				request_page ++;
+				request_diff();
+			} else {
+				if ( ++ project_no < download_projects.length ) {
+					request_page = 1;
+					request_tree_diff();
+				} else {
+					download_start();
+				}
+			}
+		}
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function download_start() {
+		console.log( 'download files: ', download_files );
+		var files = [];
+		for ( var path in download_files ) {
+			var file = download_files[path];
+			var path_encode = encodeURIComponent( file.path );
+			var url = config['url'] + 'api/v4/projects/' + file.project + '/repository/files/' + path_encode + '/raw';
+			if ( file.commit ) {
+				url += '?ref=' + file.commit;
+			}
+			if ( is_ignore_file_name( path ) ) {
+				path = path.replace( /[^\/]+$/, '' );
+				url = '';
+			}
+			files.push( {
+				url: url,
+				name: path,
+				time: file.time
+			} );
+		}
+		console.log( 'files: ', files );
+		if ( files.length == 0 ) {
+			var params = {};
+			params['command'] = 'cancel';
+			params['id'] = request_hash;
+			console.log( params );
+			http_request( 'POST', './gitlabapp.php', params, {},
+			function( response ) {
+				console.log( response );
+				if ( response['result'] && response['result'] == 'OK' ) {
+					alert( 'ダウンロードするファイルが有りません。' );
+					stopWaiting();
+				} else {
+					alert( response['result'] );
+					stopWaiting();
+				}
+			},
+			function( response ) {
+				console.log( 'error: ', response );
+				stopWaiting();
+			} );
+			return;
+		}
+		var params = {};
+		params['command'] = 'recvfile';
+		params['type'] = download_type;
+		params['files'] = JSON.stringify( files );
+		params['hash'] = request_hash;
+		cancel_request = false;
+		startProgress();
+		http_request( 'POST', './gitlabapp.php', params, {},
+			function( response ) {
+				console.log( response );
+				if ( response['result'] && response['result'] == 'OK' ) {
+					unique_id = response['id'];
+					check_download();
+				} else {
+					request_cancel( request_hash, function( response ) {
+						alert( response['result'] );
+						stopWaiting();
+					} );
+				}
+			},
+			function( response ) {
+				console.log( 'error: ', response );
+				stopWaiting();
+			} );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function check_download() {
+		var params = {};
+		params['command'] = 'status';
+		params['id'] = unique_id;
+		http_request( 'POST', './gitlabapp.php', params, {},
+			function( response ) {
+				var play = true;
+				if ( response['status'] ) {
+					if ( response['status'] == 'comp' ) {
+						console.log( response );
+						var url = './gitlabapp.php?command=download&id=' + unique_id;
+						document.getElementById( 'download_frame' ).src = url;
+						stopWaiting();
+						play = false;
+					} else if ( response['status'] == 'run' ) {
+						var bar = document.getElementById( 'progress-bar' );
+						var txt = document.getElementById( 'progress-pct' );
+						bar.value = ( response['current'] / response['total'] ) * 100;
+						txt.value = bar.textContent = Math.round( bar.value );
+					} else if ( response['status'] == 'error' ) {
+						console.log( response );
+						clearTimeout( timer_id );
+						play = false;
+						request_cancel( unique_id, function() {
+							alert( response['message'] );
+							stopWaiting();
+						} );
+					}
+				}
+				if ( cancel_request ) {
+					cancel_request = false;
+					if ( confirm( 'Are you sure you want to cancel the download ?' ) ) {
+						play = false;
+						params = {};
+						params['command'] = 'cancel';
+						params['id'] = unique_id;
+						console.log( params );
+						http_request( 'POST', './gitlabapp.php', params, {},
+							function( response ) {
+								console.log( response );
+								stopWaiting();
+							},
+							function( response ) {
+								console.log( 'error: ', response );
+								stopWaiting();
+							} );
+					}
+				}
+				if ( play ) {
+					timer_id = setTimeout( check_download(), 500 );
+				}
+			},
+			function( response ) {
+				clearTimeout( timer_id );
+				console.log( 'error: ', response );
+				stopWaiting();
+			} );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function failed( e ) {
+		stopWaiting()
+		alert( e );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function request_tree_diff() {
+		if ( download_projects[project_no]['tree'] ) {
+			request_tree();
+		} else {
+			request_diff();
+		}
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function request_tree() {
+		request_id = download_projects[project_no].id;
+		request_commit = download_projects[project_no].commit;
+		var url = config['url'] + 'api/v4/projects/' + request_id + '/repository/tree';
+		var headers = {};
+		var data = { ref: request_commit, recursive: 'true', per_page: per_page, page: request_page, REQUEST_URL: url };
+		http_request( 'GET', './proxyproc.php', data, headers, function( response ) {
+			succeed( 'tree', response );
+		}, failed );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function request_diff() {
+		request_id = download_projects[project_no].id;
+		request_commit = download_projects[project_no].commit;
+		var url = config['url'] + 'api/v4/projects/' + request_id + '/repository/commits/' + request_commit + '/diff';
+		var headers = {};
+		var data = { per_page: per_page, page: request_page, REQUEST_URL: url };
+		http_request( 'GET', './proxyproc.php', data, headers, function( response ) {
+			succeed( 'diff', response );
+		}, failed );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function request_groups() {
+		var url = config['url'] + 'api/v4/groups/';
+		var headers = {};
+		var data = { sort: 'asc', per_page: per_page, page: request_page, REQUEST_URL: url };
+		http_request( 'GET', './proxyproc.php', data, headers, function( response ) {
+			succeed( 'groups', response );
+		}, failed );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function request_projects() {
+		var url = config['url'] + 'api/v4/projects/';
+		var headers = {};
+		var data = { order_by: 'name', simple: 'false', sort: 'asc', d_after: 0, per_page: per_page, page: request_page, REQUEST_URL: url };
+		http_request( 'GET', './proxyproc.php', data, headers, function( response ) {
+			succeed( 'projects', response );
+		}, failed );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function request_branches() {
+		var project = projects[project_no].path_with_namespace;
+		project = encodeURIComponent( project );
+		var url = config['url'] + 'api/v4/projects/' + project + '/repository/branches';
+		var headers = {};
+		var data = { per_page: per_page, page: request_page, REQUEST_URL: url };
+		http_request( 'GET', './proxyproc.php', data, headers, function( response ) {
+			succeed( 'branches', response );
+		}, failed );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function request_tags() {
+		var project = projects[project_no].path_with_namespace;
+		project = encodeURIComponent( project );
+		var url = config['url'] + 'api/v4/projects/' + project + '/repository/tags';
+		var headers = {};
+		var data = { per_page: per_page, page: request_page, REQUEST_URL: url };
+		http_request( 'GET', './proxyproc.php', data, headers, function( response ) {
+			succeed( 'tags', response );
+		}, failed );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function request_commits() {
+		var project = projects[project_no].path_with_namespace;
+		project = encodeURIComponent( project );
+		var url = config['url'] + 'api/v4/projects/' + project + '/repository/commits';
+		var headers = {};
+		var data = { per_page: per_page, page: request_page, all: 'true', REQUEST_URL: url };
+		http_request( 'GET', './proxyproc.php', data, headers, function( response ) {
+			succeed( 'commits', response );
+		}, failed );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function http_request( method, url, data, headers, succeed, failed ) {
+		$.ajax( { type: method,
+					url: url,
+					data: data,
+					dataType: 'json',
+					headers: headers,
+		} ).then(
+			function( data, textStatus, errorThrown ) {
+				succeed( data );
+			},
+			function( XMLHttpRequest, textStatus, errorThrown ) {
+					console.log( XMLHttpRequest );
+					var e = XMLHttpRequest.responseText;
+					if ( e.match( /<title>([\s\S]+)<\/title>[\s\S]+<body>([\s\S]+)<\/body>/ ) ) {
+						e = RegExp.$1 + RegExp.$2;
+						e = e.replace( '<p>', '' )
+						e = e.replace( '</p>', '' )
+						e = e.replace( '<h1>', '' )
+						e = e.replace( '</h1>', '' )
+						failed( e );
+					} else {
+						failed( $('<div/>').text(e).html() );
+					}
+				} );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function create_grid() {
+		var checkboxSelector = new Slick.CheckboxSelectColumn( {
+			cssClass: "slick-cell-checkboxsel"
+		} );
+		columns.push( checkboxSelector.getColumnDefinition() );
+		columns.push( { id: 'group', name: 'Group', field: 'group', width: 200, headerCssClass: 'text-center', sortable: true });
+		columns.push( { id: 'project', name: 'Project', field: 'project', width: 400, headerCssClass: 'text-center', formatter: project_formatter, sortable: true });
+		columns.push( { id: 'branch_no', name: 'Branch', field: 'branch_no', width: 240, headerCssClass: 'text-center', formatter: branch_formatter, sortable: false});
+		columns.push( { id: 'commit_no', name: 'Commit', field: 'commit_no', width: 180, headerCssClass: 'text-center', formatter: commit_formatter, sortable: false});
+
+		var options = {
+			multiColumnSort: true,
+			enableCellNavigation: false,
+			enableColumnReorder: false,
+			rowHeight: 26,
+			topPanelHeight: 26
+		};
+
+		dataView = new Slick.Data.DataView({ inlineFilters: true });
+		grid = new Slick.Grid( '#myGrid', dataView, columns, options );
+		grid.setSelectionModel( new Slick.RowSelectionModel( { selectActiveRow: false } ) );
+		grid.registerPlugin( checkboxSelector );
+
+		resizer = new Slick.Plugins.Resizer( {
+			container: '.container',
+			// optionally define some padding and dimensions
+			rightPadding: 5,	// defaults to 0
+			bottomPadding: 10,	// defaults to 20
+			minHeight: 150, 	// defaults to 180
+			minWidth: 250,		// defaults to 300
+			// you can also add some max values (none by default)
+			// maxHeight: 1000
+			// maxWidth: 2000
+		},
+			// the 2nd argument is an object and is optional
+			// you could pass fixed dimensions, you can pass both height/width or a single dimension (passing both would obviously disable the auto-resize completely)
+			// for example if we pass only the height (as shown below), it will use a fixed height but will auto-resize only the width
+			// { height: 300 }
+		);
+		grid.registerPlugin( resizer );
+
+		grid.onSort.subscribe( function( e, args ) {
+			sort_func( args );
+		} );
+
+		grid.onMouseLeave.subscribe(function(e, args) {
+			//do whatever
+		});
+//		dataView.onRowsChanged.subscribe(function (e, args) {
+//			grid.invalidateRows(args.rows);
+//			grid.render();
+//		});
+
+		$("#gridContainer").resizable();
+
+		$(".grid-header .ui-icon")
+				.addClass("ui-state-default ui-corner-all")
+				.mouseover(function (e) {
+				  $(e.target).addClass("ui-state-hover")
+				})
+				.mouseout(function (e) {
+				  $(e.target).removeClass("ui-state-hover")
+				});
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function is_ignore_file_name( name ) {
+		var pos = name.lastIndexOf( '/' );
+		if ( pos >= 0 ) {
+			name = name.substring( pos + 1 );
+		}
+		for ( var n = 0; n < config['ignore_file_name'].length; n ++ ) {
+			var reg  =new RegExp( config['ignore_file_name'][n] );
+			if ( name.match( reg ) ) return true;
+		}
+		return false;
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function is_ignore_message( message ) {
+		for ( var n = 0; n < config['ignore_commit_message'].length; n ++ ) {
+			var reg  =new RegExp( config['ignore_commit_message'][n] );
+			if ( message.match( reg ) ) return true;
+		}
+		return false;
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function sort_func( args ) {
+		dataView.syncGridSelection( grid, true );
+		dataView.sort( function( a, b ) {
+				for ( var i = 0, l = args.sortCols.length; i < l; i++ ) {
+					var field = args.sortCols[i].columnId;
+					if ( field == 'project' ) {
+						field = 'name';
+					}
+					var sign = args.sortCols[i].sortAsc ? 1 : -1;
+					var value1 = a[field], value2 = b[field];
+					var result = (value1 == value2 ? 0 : (value1 > value2 ? 1 : -1)) * sign;
+					if (result != 0) {
+						return result;
+					}
+				}
+			}, args.sortAsc );
+		grid.invalidate();
+		grid.render();
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function create_griddata( reset_groups ) {
+		if ( reset_groups ) {
+			var groups = [];
+			for ( var n = 0; n < projects.length; n ++ ) {
+				var group = projects[n]['namespace']['name'];
+				if ( groups.indexOf( group ) < 0 ) {
+					groups.push( group );
+				}
+			}
+			groups.sort();
+			$( '#target_group' ).children().remove();
+			$( '#target_group' ).append( $( '<option>' ).html( '' ) );
+			for ( var n = 0; n < groups.length; n ++ ) {
+				$( '#target_group' ).append( $( '<option>' ).html( groups[n] ) );
+			}
+		}
+		var target_group = $( '#target_group' ).val();
+		var target_branch = $( '#target_branch' ).val();
+		griddata = [];
+		for ( var n = 0; n < projects.length; n ++ ) {
+			if ( target_group != '' && projects[n]['namespace']['name'] != target_group ) continue;
+			if ( target_branch == 'Tag' && projects[n]['tag'].length == 0 ) continue;
+			var branch_no = 0;
+			if ( target_branch == 'Branch' ) {
+				for ( branch_no = 0; branch_no < projects[n]['branch'].length; branch_no ++ ) {
+					if ( projects[n]['branch'][branch_no].default ) break;
+				}
+			}
+			griddata.push( {
+				id: projects[n].id,
+				group: projects[n]['namespace']['name'],
+				project: projects[n]['name'],
+				path: projects[n].path_with_namespace,
+				name: projects[n]['name'].toLowerCase().replace( /_/g, '' ).replace( /-/g, '' ),
+				branches: projects[n]['branch'],
+				tags: projects[n]['tag'],
+				branch_no: branch_no,
+				commit_no: 0
+			} );
+		}
+		console.log( griddata );
+		dataView.setItems( griddata );
+		var cols = grid.getColumns();
+		cols[3]['name'] = target_branch;
+		grid.setColumns( cols );
+		sort_func( { sortCols: [ { columnId: 'group', sortAsc: true } ] } );
+		grid.setSelectedRows( [] )
+		grid.invalidate();
+		grid.render();
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function checkbox_formatter( row, col, value, columnDef, dataContext ) {
+		var no;
+		for ( no = 0; no < griddata.length; no ++ ) {
+			if ( griddata[no]['id'] == dataContext['id'] ) break;
+		}
+		var id = "checkbox_" + columnDef.id + '_' + no;
+		var tag = '<input type="checkbox" id="' + id + '" '+
+					'onclick="click_checkbox(this,event, ' + row + ',' + no + ',\'' + columnDef.field + '\');"';
+		if ( value == true ) {
+			tag += ' checked';
+		}
+		tag += '>';
+		return tag;
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function project_formatter( row, col, value, columnDef, dataContext ) {
+		var item = dataView.getItem( row );
+		var target_branch = $( '#target_branch' ).val();
+		var commit;
+		if ( target_branch == 'Branch' ) {
+			commit = item['branches'][item['branch_no']]['commits'][item['commit_no']];
+		} else {
+			commit = item['tags'][item['branch_no']]['commits'][item['commit_no']];
+		}
+		var message = commit['message'];
+		if ( config['max_message_length'] > 0 ) {
+			var eol = mbstrlen( message ) > config['max_message_length'] ? '...' : '';
+			message = mbleft( message, config['max_message_length'] ) + eol;
+		}
+		var tag = '<span title="' + htmlspecialchars( message ) + '" class="fit_parent">' + value + '</span>';
+		return tag;
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function branch_formatter( row, col, value, columnDef, dataContext ) {
+		var no;
+		for ( no = 0; no < griddata.length; no ++ ) {
+			if ( griddata[no]['id'] == dataContext['id'] ) break;
+		}
+		var id = "select_" + columnDef.id + '_' + no;
+		var tag = '<select id="' + id + '" ' +
+						'class="fit_parent" ' +
+						'onchange="change_branch(this,event, ' + row + ',' + no + ',\'' + columnDef.field + '\');">';
+		var target_branch = $( '#target_branch' ).val();
+		if ( target_branch == 'Branch' ) {
+			for ( var n = 0; n < griddata[no]['branches'].length; n ++ ) {
+				tag += '<option';
+				if ( value == n ) {
+					tag += ' selected';
+				}
+				tag += '>' + griddata[no]['branches'][n]['name'] + '</option>';
+			}
+		} else {
+			for ( var n = 0; n < griddata[no]['tags'].length; n ++ ) {
+				tag += '<option value="' + n + '"';
+				if ( value == n ) {
+					tag += ' selected';
+				}
+				tag += '>' + griddata[no]['tags'][n]['name'] + '</option>';
+			}
+		}
+		tag += '</select>';
+		return tag;
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function commit_formatter( row, col, value, columnDef, dataContext ) {
+		var no;
+		for ( no = 0; no < griddata.length; no ++ ) {
+			if ( griddata[no]['id'] == dataContext['id'] ) break;
+		}
+		var id = "select_" + columnDef.id + '_' + no;
+		var target_branch = $( '#target_branch' ).val();
+		if ( target_branch == 'Branch' ) {
+			var tag = '<select id="' + id + '" ' +
+						'class="fit_parent" ' +
+						'onchange="change_commit(this,event,' + row + ',' + no + ',\'' + columnDef.field + '\');">';
+			var commits = griddata[no]['branches'][griddata[no]['branch_no']];
+			for ( var n = 0; n < commits['commits'].length; n ++ ) {
+				if ( is_ignore_message( commits['commits'][n]['message'] ) ) continue;
+				mark = is_mark_message( commits['commits'][n]['message'] );
+				tag += '<option value="' + n + '"';
+				if ( value == n ) {
+					tag += ' selected';
+				}
+				tag += '>' + mark + format_date( commits['commits'][n]['committed_date'] ) + '</option>';
+			}
+			tag += '</select>';
+		} else {
+			var commits = griddata[no]['tags'][griddata[no]['branch_no']];
+			tag = '<span class="fit_parent">' + format_date( commits['commits'][0]['committed_date'] ) + '</span>';
+		}
+		return tag;
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function is_mark_message( message ) {
+                var mark = "";
+		for ( var n = 0; n < config['mark_commit_message'].length; n ++ ) {
+			var reg  =new RegExp( config['mark_commit_message'][n][0] );
+			if ( message.match( reg ) ) {
+				mark = config['mark_commit_message'][n][1];
+				break;
+			}
+		}
+		return mark;
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function change_branch( select, event, row, no, field ) {
+		event.stopPropagation();
+		griddata[no]['branch_no'] = select.selectedIndex;
+		griddata[no]['commit_no'] = 0;
+		grid.invalidateRows( [ row ] );
+		grid.render();
+		return false;
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function change_commit( select, event, row, no, field ) {
+		event.stopPropagation();
+		griddata[no]['commit_no'] = select.selectedIndex;
+		grid.invalidateRows( [ row ] );
+		grid.render();
+		return false;
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function format_date( date ) {
+		var day = new Date( date );
+		var yy = ( '00' + day.getFullYear() % 100 ).slice( -2 );
+		var mm = ( '00' + ( day.getMonth() + 1 ) ).slice( -2 );
+		var dd = ( '00' + day.getDate() ).slice( -2 );
+		var hh = ( '00' + day.getHours() ).slice( -2 );
+		var mi = ( '00' + day.getMinutes() ).slice( -2 );
+		var ss = ( '00' + day.getSeconds() ).slice( -2 );
+		return yy + '/' + mm + '/' + dd + ' ' + hh + ':' + mi + ':' + ss;
+	}
+
+	///////////////////////////////////////////////////////////////////
+	function htmlspecialchars( str ) {
+		return (str + '').replace(/&/g,'&amp;')
+							.replace(/"/g,'&quot;')
+							.replace(/'/g,'&#039;')
+							.replace(/</g,'&lt;')
+							.replace(/>/g,'&gt;');
+	}
+
+	///////////////////////////////////////////////////////////////////
+	function mbstrlen( str ) {
+		var len = 0;
+		for ( var i = 0; i < str.length; i++ ) {
+			if ( str.charCodeAt(i) <= 255 ) {
+				len += 0.5;
+			} else {
+				len += 1;
+			}
+		}
+		return len;
+	}
+
+	///////////////////////////////////////////////////////////////////
+	function mbleft( str, len ) {
+		var ret = '';
+		for ( var i = 0; len > 0 && i < str.length; i ++ ) {
+			if ( str[i].match( /[ -~]/ ) ) {
+				len -= 0.5;
+			} else {
+				len -= 1;
+			}
+			ret += str[i];
+		}
+		return ret;
+	}
+
+	///////////////////////////////////////////////////////////////////
+	function startProgress() {
+		var html = '<div class="progress-label">Receiving Files...</div><br/>' +
+					'<div style="white-space:nowrap; padding:0 8px 0 8px;">' +
+					'<progress id="progress-bar" value="0" min="0" max="100">0%</progress> <output id="progress-pct">0</output>%</div><br/>' +
+					'<button id="btn_cancel">Cancel</button><br/><br/>';
+		$.blockUI( { message: html,
+							overlayCSS:  {
+								backgroundColor: '#aaa',
+								opacity: 0.6,
+								cursor: 'wait'
+							},
+							css: {
+								width: '400px',
+								height: '160px',
+								color: '#black'
+							}
+						} );
+		$( '#btn_cancel' ).on( 'click', function( e ) {
+			cancel_request = true;
+		} );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function startWaiting() {
+		var msg = '<img src="/js/SlickGrid/images/ajax-loader-small.gif"' +
+				' border=0" style="vertical-align: middle; margin-right: 30px;">' +
+				'<span style="font-size: 1.4em">Receiving...</span>';
+		$.blockUI({
+			message: msg,
+			css: {
+				padding: '19px 0 0 0',
+				width: '250px',
+				height: '50px',
+				border: 'none',
+				cursor: 'wait'
+			}
+		});
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function stopWaiting() {
+		$.unblockUI();
+	}
+
+</script>
+
+</head>
+<body>
+
+<table border=0 cellpadding=0 cellspacing=4>
+<thead></thead>
+<tbody>
+<tr>
+<td align="right"><button id="download_all" title="選択したコミットの全体を取得">全体取得</button></td>
+<td><select id="download_all_type">
+<option>tar.gz</option>
+<option>zip</option>
+</select></td>
+<td style="width:120px;">&nbsp;</td>
+<td><input type="checkbox" id="including_project"><label style="font-size:14px" for="including_project">プロジェクト名を含んでダウンロード</label></td>
+</tr>
+
+<tr>
+<td align="right"><button id="download_commits" title="直前のコミットとの差分を取得">差分取得</button></td>
+<td><select id="download_commits_type">
+<option>tar.gz</option>
+<option>zip</option>
+</select></td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+
+<tr>
+<td align="right">Group: </td>
+<td><select id="target_group">
+<option></option>
+</select></td>
+<td>&nbsp;</td>
+<td>&nbsp;</td>
+</tr>
+
+<tr>
+<td align="right">Branch/Tag: </td>
+<td><select id="target_branch">
+<option>Branch</option>
+<option>Tag</option>
+</select></td>
+<td>&nbsp;</td>
+<td><button id="reload_repository" style="visibility:hidden;" title="一覧を最新に更新">最新に更新</button></td>
+</tr>
+
+</tbody>
+</table>
+
+<div class="container" style="width:100%;height:600px;margin-top:8px;">
+<div id="myGrid" style="width:100%;height:100%;"></div>
+</div>
+
+<iframe id="download_frame" style="display:none;"></iframe>
+
+</body>
+</html>
