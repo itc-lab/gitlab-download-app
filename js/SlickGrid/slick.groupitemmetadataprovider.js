@@ -1,13 +1,4 @@
 (function ($) {
-  $.extend(true, window, {
-    Slick: {
-      Data: {
-        GroupItemMetadataProvider: GroupItemMetadataProvider
-      }
-    }
-  });
-
-
   /***
    * Provides item metadata for group (Slick.Group) and totals (Slick.Totals) rows produced by the DataView.
    * This metadata overrides the default behavior and formatting of those rows so that they appear and function
@@ -20,9 +11,9 @@
    * @module Data
    * @namespace Slick.Data
    * @constructor
-   * @param options
+   * @param inputOptions
    */
-  function GroupItemMetadataProvider(options) {
+  function GroupItemMetadataProvider(inputOptions) {
     var _grid;
     var _defaults = {
       checkboxSelect: false,
@@ -42,8 +33,15 @@
       includeHeaderTotals: false
     };
 
-    options = $.extend(true, {}, _defaults, options);
+    var options = $.extend(true, {}, _defaults, inputOptions);
 
+    function getOptions(){
+      return options;
+    }
+
+    function setOptions(inputOptions) {
+      $.extend(true, options, inputOptions);
+    }
 
     function defaultGroupCellFormatter(row, cell, value, columnDef, item, grid) {
       if (!options.enableExpandCollapse) {
@@ -170,7 +168,18 @@
       "init": init,
       "destroy": destroy,
       "getGroupRowMetadata": getGroupRowMetadata,
-      "getTotalsRowMetadata": getTotalsRowMetadata
+      "getTotalsRowMetadata": getTotalsRowMetadata,
+      "getOptions": getOptions,
+      "setOptions": setOptions
     };
   }
+
+  // exports
+  $.extend(true, window, {
+    Slick: {
+      Data: {
+        GroupItemMetadataProvider: GroupItemMetadataProvider
+      }
+    }
+  });
 })(jQuery);

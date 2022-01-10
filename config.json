@@ -1,10 +1,14 @@
 {
-	"url": "http://gitlab.itccorporation.jp/",
+	"url": "https://gitlab.itccorporation.jp/",
 	"ignore_commit_message": [],
 	"mark_commit_message": [["Merge branch","*"]],
 	"ignore_file_name": [ "^\\.gitkeep", "^\\.gitignore" ],
 	"cache_projects": 1,
 	"max_message_length": 500,
 	"group": "daemon",
-	"user": "daemon"
+	"user": "daemon",
+	"//session_cookie_name": "mod_auth_openidc_session",
+	"session_cookie_name": "session",
+	"default_download_name_maxlength": 255,
+	"default_download_name": "gitlab"
 }

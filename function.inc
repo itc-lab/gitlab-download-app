@@ -2,6 +2,7 @@
     define("LOG_PATH", "/tmp/");
     define("LOG_FILE", "/tmp/gitlab-download-app.log");
     define("CACHE_DIR", "/opt/gitlab-download-app/cache/");
+    define("RECV_FILE_CACHE", CACHE_DIR . "RECV_FILE/");
     define("PROJECTS_FILE", CACHE_DIR . "projects.json");
     define("LOCK_FILE", "/tmp/gitlab-download-app.lock");
     define("ACCESS_TOKEN", "XXXXXXXXXXXXXXXXXXXX");

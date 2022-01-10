@@ -4,9 +4,11 @@
     declare(ticks = 1);
     $config = json_decode(file_get_contents("./config.json"), true);
     $tmp = $argv[1];
+
     $pid = getmypid();
     file_put_contents("{$tmp}pid", $pid);
     $req = json_decode(file_get_contents("{$tmp}request.json"), true);
+
     if (!isset($req["files"])) {
         $req["files"] = array();
     }
@@ -30,44 +32,52 @@
         put_status("${tmp}status.json", json_encode($stat));
         $url = $req["files"][$n]["url"];
         $file = "{$tmp}{$req["files"][$n]["name"]}";
+        $recv_file = RECV_FILE_CACHE . "{$req["files"][$n]["recv_path"]}/{$req["files"][$n]["commit"]}/" . basename("{$req["files"][$n]["name"]}");
         if (preg_match("/\/$/", $file)) {
             @mkdir($file, 0777, true);
         } else {
             @mkdir(dirname($file), 0777, true);
+            @mkdir(dirname($recv_file), 0777, true);
         }
         if ($url != "") {
-            $rt = recvfile($url, $file, $headers);
-            $size = @filesize($file);
-            error_log("url: {$url} ({$rt}), file: {$file} ($size)\n", 3, LOG_FILE);
-            if ($rt !== true) {
-                $stat["status"] = "error";
-                $ar = json_decode($rt, true);
-                if ($ar) {
-                    if (isset($ar["error"])) {
-                        $stat["message"] = $ar["error"];
-                    } elseif (isset($ar["message"])) {
-                        $stat["message"] = $ar["message"];
+            if (! file_exists("$recv_file")) {
+                $rt = recvfile($url, $recv_file, $headers);
+                $size = @filesize($recv_file);
+                error_log("url: {$url} ({$rt}), file: {$recv_file} ($size)\n", 3, LOG_FILE);
+                if ($rt !== true) {
+                    $stat["status"] = "error";
+                    $ar = json_decode($rt, true);
+                    if ($ar) {
+                        if (isset($ar["error"])) {
+                            $stat["message"] = $ar["error"];
+                        } elseif (isset($ar["message"])) {
+                            $stat["message"] = $ar["message"];
+                        } else {
+                            $stat["message"] += $ar;
+                        }
                     } else {
-                        $stat["message"] += $ar;
+                        $stat["message"] = $rt;
                     }
+                    put_status("${tmp}status.json", json_encode($stat));
+                    exit;
                 } else {
-                    $stat["message"] = $rt;
+                    touch($recv_file, strtotime($req["files"][$n]["time"]));
+                    link($recv_file, $file);
                 }
-                put_status("${tmp}status.json", json_encode($stat));
-                exit;
             } else {
-                touch($file, strtotime($req["files"][$n]["time"]));
+                link($recv_file, $file);
             }
         }
     }
     $so = array();
     $rt = 0;
+    $download_file_name = $req["download_file_name"];
     if ($req["type"] == "tar.gz") {
-        $target = "gitlab.tar.gz";
-        $cmd = "cd ${tmp}gitlab && tar czf ../{$target} * --owner=${config["user"]} --group=${config["group"]}";
+        $target = $download_file_name . ".tar.gz";
+        $cmd = "cd ${tmp}${download_file_name} && tar czf ../{$target} * --owner=${config["user"]} --group=${config["group"]}";
     } elseif ($req["type"] == "zip") {
-        $target = "gitlab.zip";
-        $cmd = "cd ${tmp}gitlab && zip -r ../{$target} *";
+        $target = $download_file_name . ".zip";
+        $cmd = "cd ${tmp}${download_file_name} && zip -r ../{$target} *";
     }
     $rt = exec($cmd, $so, $rt);
     rmdir_r("{$tmp}gitlab");

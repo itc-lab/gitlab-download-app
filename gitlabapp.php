@@ -9,10 +9,12 @@
         "result" => "UNKNOWN"
     );
 
+    $config = json_decode(file_get_contents("./config.json"), true);
+
     if ($_REQUEST["command"] == "cache_check") {
         $seed = json_decode($_REQUEST["seed"], true);
         $seed = json_encode($seed, JSON_UNESCAPED_UNICODE);
-        $hash = hash("sha3-512", $seed);
+        $hash = hash("sha256", $seed);
         $result["result"] = "OK";
         $result["hash"] = $hash;
         $tmp = CACHE_DIR . $hash . "/";
@@ -65,6 +67,7 @@
             $result["result"] = "OK";
             $result["projects"] = json_decode("[]", true);
         }
+        $result["cookies"] = !empty($_COOKIE) ? $_COOKIE : array();
     } elseif ($_REQUEST["command"] == "recvfile") {
         if (isset($_REQUEST["hash"]) && $_REQUEST["hash"] != "") {
             $tmp = CACHE_DIR . $_REQUEST["hash"] . "/";
@@ -106,7 +109,16 @@
         if (isset($_REQUEST["id"]) && file_exists(CACHE_DIR . "{$_REQUEST["id"]}/request.json")) {
             $tmp = CACHE_DIR . $_REQUEST["id"] . "/";
             $req = json_decode(file_get_contents("{$tmp}request.json"), true);
-            $file = "{$tmp}gitlab." . $req["type"];
+            $file = "{$tmp}". $req["download_file_name"] . "." . $req["type"];
+            $new_file = "{$tmp}". $_REQUEST["download_file_name"] . "." . $req["type"];
+            if ($file != $new_file) {
+                rename($file, $new_file);
+                $file = $new_file;
+                $req["download_file_name"] = $_REQUEST["download_file_name"];
+                $json = json_encode($req, JSON_UNESCAPED_UNICODE);
+                unlink("{$tmp}request.json");
+                file_put_contents("{$tmp}request.json", $json);
+            }
             header("Content-type: application/gzip");
             header("Content-Disposition: attachment; filename=" . basename($file));
             header("Content-Length: " . filesize($file));
@@ -115,6 +127,9 @@
             posix_kill($pid, 15 /*SIGTERM*/);
             exit;
         }
+    } elseif ($_REQUEST["command"] == "logout") {
+        setcookie($config["session_cookie_name"], "", time() - 3600, "/");
+        $result["result"] = "OK";
     }
     $text = json_encode($result, JSON_UNESCAPED_UNICODE);
     header("Content-Type: application/json; charset=utf-8");
