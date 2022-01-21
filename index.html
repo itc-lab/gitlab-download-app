@@ -86,6 +86,7 @@
 	var request_id;
 	var download_type;
 	var download_files = {};
+	var simul_download_flag;
 	var unique_id;
 	var timer_id;
 	var cancel_request = false;
@@ -97,6 +98,9 @@
 		console.log( 'start: ', new Date() );
 		$( '#download_all' ).prop( 'disabled', true );
 		$( '#download_commits' ).prop( 'disabled', true );
+		$( '#open_diff' ).prop( 'disabled', true ).prop( 'title', '' );
+		$( '#download_latest_commit_of_main' ).prop( 'checked', false );
+		$( '#download_previous_commit' ).prop( 'checked', false );
 		$.getJSON( './config.json?' + Math.random(), ( data ) => {
 			config = data;
 			console.log( 'config: ', config );
@@ -156,14 +160,25 @@
 		$( '#download_all' ).on( 'click', function(event) {
 			var download_name = document.getElementById('download_file_name').value;
 			if ( input_txt_check( download_name ) == true ) {
-				download_all( event.shiftKey && event.ctrlKey );
+				simul_download_flag = 'Off';
+				if ( simul_download_check() == true ) {
+					download_all( event.shiftKey && event.ctrlKey );
+				}
 			}
 		} );
 
 		$( '#download_commits' ).on( 'click', function(event) {
 			var download_name = document.getElementById('download_file_name').value;
 			if ( input_txt_check( download_name ) == true ) {
+				simul_download_flag = 'Off';
 				download_commits( event.shiftKey && event.ctrlKey );
+			}
+		} );
+
+		$( '#open_diff' ).on( 'click', function(event) {
+			simul_download_flag = 'Off';
+			if ( simul_download_check() == true ) {
+				open_diff( event.shiftKey && event.ctrlKey );
 			}
 		} );
 
@@ -290,6 +305,11 @@
 				var branch = value['branches'][value['branch_no']];
 				var commits = get_all ? branch['commits'].slice( value['commit_no'] ) : [ branch['commits'][value['commit_no']] ];
 				var get_tree = get_all;
+				if ( simul_download_flag == 'On' ) {
+					add_path = config['download_name_selected_commit'];
+				} else {
+					add_path = '';
+				}
 				while ( commits.length ) {
 					var commit = commits.pop();
 					item = {
@@ -297,7 +317,8 @@
 						path: value.path,
 						name: value.project,
 						commit: commit['id'],
-						time: new Date( commit['committed_date'] ).toGMTString()
+						time: new Date( commit['committed_date'] ).toGMTString(),
+						add_path: add_path
 					};
 					if ( get_tree ) item['tree'] = true;
 					download_projects.push( item );
@@ -309,19 +330,91 @@
 				var get_tree = get_all;
 				while ( commits.length ) {
 					var commit = commits.pop();
+					if ( simul_download_flag == 'On' ) {
+						add_path = config['download_name_selected_commit'];
+					} else {
+						add_path = '';
+					}
 					item = {
 						id: value.id,
 						path: value.path,
 						name: value.project,
 						commit: commit['id'],
-						time: new Date( commit['committed_date'] ).toGMTString()
+						time: new Date( commit['committed_date'] ).toGMTString(),
+						add_path: add_path
 					};
 					if ( get_tree ) item['tree'] = true;
 					download_projects.push( item );
 					get_tree = false;
 				}
 			}
+			if ( simul_download_flag == 'On' ) {
+				if ( $( '#download_latest_commit_of_main' ).prop( 'checked' ) ) {
+					if ( latest_commit_of_main_check(row) == true ) set_download_latest_commit_of_main(row);
+				} else {
+					if ( previous_commit_check(row) == true ) set_download_previous_commit(row);
+				}
+			}
 		} );
+		console.log( 'download projects: ', download_projects );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function set_download_latest_commit_of_main( row ) {
+		var value = dataView.getItem( row );
+		var item = {};
+		for ( var n = 0; n < value['branches']['length']; n ++ ) {
+			if ( value['branches'][n]['name'] == value['default_branch'] ) {
+				var branch = value['branches'][n];
+				break;
+			}
+		}
+		var commits = branch['commits'].slice(0);
+		var get_tree = true;
+		while ( commits.length ) {
+			var commit = commits.pop();
+			item = {
+				id: value.id,
+				path: value.path,
+				name: value.project,
+				commit: commit['id'],
+				time: new Date( commit['committed_date'] ).toGMTString(),
+				add_path: config['download_name_latest_commit_of_main']
+			};
+			if ( get_tree ) item['tree'] = true;
+			download_projects.push( item );
+			get_tree = false;
+		}
+		console.log( 'download projects: ', download_projects );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function set_download_previous_commit( row ) {
+		var value = dataView.getItem( row );
+		var item = {};
+		var branch = value['branches'][value['branch_no']];
+		var before_commit_id = branch['commits'][value['commit_no']]['parent_ids'][0];
+		for ( var n = 0; n < branch['commits']['length']; n ++ ) {
+			if ( branch['commits'][n]['id'] == before_commit_id ) {
+				break;
+			}
+		}
+		var commits = branch['commits'].slice( n )
+		var get_tree = true;
+		while ( commits.length ) {
+			var commit = commits.pop();
+			item = {
+				id: value.id,
+				path: value.path,
+				name: value.project,
+				commit: commit['id'],
+				time: new Date( commit['committed_date'] ).toGMTString(),
+				add_path: config['download_name_previous_commit']
+			};
+			if ( get_tree ) item['tree'] = true;
+			download_projects.push( item );
+			get_tree = false;
+		}
 		console.log( 'download projects: ', download_projects );
 	}
 
@@ -492,6 +585,43 @@
 	}
 
 	////////////////////////////////////////////////////////////////////
+	function open_diff( clear_cache ) {
+		get_selected( true );
+		if ( download_projects.length == 0 ) {
+			return;
+		}
+		download_type = 'diff';
+		cache_check( 'all', function( response ) {
+					if ( response['status'] == 'error' ) {
+						alert( 'ERROR : ハッシュが重複しました。' );
+					} else if ( response['status'] == 'busy' ) {
+						alert( 'その他でダウンロードが進行中です。しばらくお待ちください。' );
+					} else if ( response['status'] == 'ready' ) {
+						if ( clear_cache ) {
+							if ( confirm( 'キャッシュをクリアしますか？' ) ) {
+								request_cancel( response['hash'], function( response ) {
+									alert( 'キャッシュをクリアしました。' );
+								} );
+							}
+						} else {
+							var download_name = document.getElementById('download_file_name').value;
+							if ( "" ==	download_name ) {
+								download_name = config['default_download_name'];
+							}
+							window.open( 'dispdiff.html?id=' + response['hash'], response['hash'] );
+						}
+					} else {
+						download_files = {};
+						project_no = 0;
+						request_hash = response['hash'];
+						startWaiting();
+						request_page = 1;
+						request_tree_diff();
+					}
+			} );
+	}
+
+	////////////////////////////////////////////////////////////////////
 	function succeed( type, response, done ) {
 		switch( type ) {
 
@@ -648,12 +778,13 @@
 							path = download_projects[project_no]['name'] + '/' + path;
 						}
 						var download_name = document.getElementById('download_file_name').value;
-						if ( "" ==	download_name ) {
+						if ( "" == download_name ) {
 							download_name = config['default_download_name'];
 						}
-						path = download_name + '/' + path;
+						path = download_name + '/' + download_projects[project_no].add_path + path;
 						download_files[path] = response[n];
 						download_files[path]['recv_path'] = download_projects[project_no].path + '/' + response[n].path.replace( /[^\/]*$/ , '');
+						download_files[path]['add_path'] = download_projects[project_no].add_path;
 					}
 				}
 			}
@@ -684,18 +815,19 @@
 					if ( "" ==	download_name ) {
 						download_name = config['default_download_name'];
 					}
-					path = download_name + '/' + path;
+					path = download_name + '/' + download_projects[project_no].add_path + path;
 					if ( response[n]['deleted_file'] ) {
 						if ( download_files[path] ) delete download_files[path];
 					} else {
 						download_files[path] = response[n];
 						download_files[path]['recv_path'] = download_projects[project_no].path + '/' + response[n].new_path.replace( /[^\/]*$/ , '');
+						download_files[path]['add_path'] = download_projects[project_no].add_path;
 						if ( response[n]['renamed_file'] ) {
+							path = download_name + '/' + download_projects[project_no].add_path;
 							if ( $( '#including_project' ).prop( 'checked' ) ) {
-								path = download_name + '/' + download_projects[project_no]['name'] + '/' + response[n]['old_path'];
-							} else {	
-								path = download_name + '/' + response[n]['old_path'];
+								path = path + download_projects[project_no]['name'] + '/';
 							}
+							path = path + response[n]['old_path'];
 							if ( download_files[path] ) delete download_files[path];
 						}
 					}
@@ -711,6 +843,46 @@
 				} else {
 					download_start();
 				}
+			}
+			break;
+		case 'compare':
+			console.log( 'compare: ', response );
+			response = response.diffs;
+			for ( var n = 0; n < response.length; n ++ ) {
+				response[n]['project'] = download_projects[project_no].id;
+				response[n]['time'] = download_projects[project_no].time;
+				response[n]['commit'] = request_commit;
+				response[n]['path'] = response[n]['new_path'];
+				var path = response[n]['new_path'];
+				if ( $( '#including_project' ).prop( 'checked' ) ) {
+					path = download_projects[project_no]['name'] + '/' + path;
+				}
+				var download_name = document.getElementById('download_file_name').value;
+				if ( "" ==	download_name ) {
+					download_name = config['default_download_name'];
+				}
+				path = download_name + '/' + download_projects[project_no].add_path + path;
+				if ( response[n]['deleted_file'] ) {
+					if ( download_files[path] ) delete download_files[path];
+				} else {
+					download_files[path] = response[n];
+					download_files[path]['recv_path'] = download_projects[project_no].path + '/' + response[n].new_path.replace( /[^\/]*$/ , '');
+					download_files[path]['add_path'] = download_projects[project_no].add_path;
+					if ( response[n]['renamed_file'] ) {
+						path = download_name + '/' + download_projects[project_no].add_path;
+						if ( $( '#including_project' ).prop( 'checked' ) ) {
+							path = path + download_projects[project_no]['name'] + '/';
+						}
+						path = path + response[n]['old_path'];
+						if ( download_files[path] ) delete download_files[path];
+					}
+				}
+			}
+			if ( ++ project_no < download_projects.length ) {
+				request_page = 1;
+				request_tree_diff();
+			} else {
+				download_start();
 			}
 		}
 	}
@@ -812,12 +984,16 @@
 				if ( response['status'] ) {
 					if ( response['status'] == 'comp' ) {
 						console.log( response );
-						var download_name = document.getElementById('download_file_name').value;
-						if ( "" ==	download_name ) {
-							download_name = config['default_download_name'];
+						if ( download_type == 'diff' ) {
+							window.open( 'dispdiff.html?id=' + unique_id, unique_id );
+						} else {
+							var download_name = document.getElementById('download_file_name').value;
+							if ( "" ==	download_name ) {
+								download_name = config['default_download_name'];
+							}
+							var url = './gitlabapp.php?command=download&id=' + unique_id + '&download_file_name=' + download_name;
+							document.getElementById( 'download_frame' ).src = url;
 						}
-						var url = './gitlabapp.php?command=download&id=' + unique_id + '&download_file_name=' + download_name;
-						document.getElementById( 'download_frame' ).src = url;
 						stopWaiting();
 						play = false;
 					} else if ( response['status'] == 'run' ) {
@@ -876,7 +1052,8 @@
 		if ( download_projects[project_no]['tree'] ) {
 			request_tree();
 		} else {
-			request_diff();
+			////request_diff();
+			request_compare();
 		}
 	}
 
@@ -901,6 +1078,19 @@
 		var data = { per_page: per_page, page: request_page, REQUEST_URL: url };
 		http_request( 'GET', './proxyproc.php', data, headers, function( response ) {
 			succeed( 'diff', response );
+		}, failed );
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function request_compare() {
+		request_id = download_projects[project_no].id;
+		request_commit = download_projects[project_no].commit;
+		var from = download_projects[project_no - 1].commit;
+		var url = config['url'] + 'api/v4/projects/' + request_id + '/repository/compare';
+		var headers = {};
+		var data = { to: request_commit, from: from, REQUEST_URL: url };
+		http_request( 'GET', './proxyproc.php', data, headers, function( response ) {
+			succeed( 'compare', response );
 		}, failed );
 	}
 
@@ -1042,6 +1232,7 @@
 			var selectedrows = grid.getSelectedRows();
 			$( '#download_all' ).prop( 'disabled', selectedrows.length == 0 );
 			$( '#download_commits' ).prop( 'disabled', selectedrows.length == 0 );
+			update_open_diff_button();
 		} );
 
 		grid.onClick.subscribe( function ( e, args ) {
@@ -1161,6 +1352,7 @@
 				project: projects[n]['name'],
 				path: projects[n].path_with_namespace,
 				name: projects[n]['name'].toLowerCase().replace( /_/g, '' ).replace( /-/g, '' ),
+				default_branch: projects[n]['default_branch'],
 				branches: projects[n]['branch'],
 				tags: projects[n]['tag'],
 				branch_no: branch_no,
@@ -1438,6 +1630,73 @@
 	return true;
 	}
 
+	////////////////////////////////////////////////////////////////////
+	function simul_download_check( ) {
+
+		if ( ( ! $( '#download_latest_commit_of_main' ).prop( 'checked' ) ) &&
+			( ! $( '#download_previous_commit' ).prop( 'checked' ) ) ) return true;
+
+		if ( ( $( '#download_latest_commit_of_main' ).prop( 'checked' ) ) &&
+			( $( '#download_previous_commit' ).prop( 'checked' ) ) ) {
+			alert( '"最新のメイン"と"一つ前のコミット"は、どちらかしか選択できません。' );
+			return false;
+		}
+
+		simul_download_flag = 'On';
+		var rows = grid.getSelectedRows();
+		if ( $( '#download_latest_commit_of_main' ).prop( 'checked' ) ) {
+			for ( var n = 0; n < rows.length; n ++ ) {
+				if ( latest_commit_of_main_check( rows[n] ) == true ) {
+					return true;
+				}
+			}
+			alert( '全Project 最新のメインのため、同時にダウンロードが行えません。' );
+		} else {
+			for ( var n = 0; n < rows.length; n ++ ) {
+				if ( previous_commit_check( rows[n] ) == true ) {
+					return true;
+				}
+			}
+			alert( '全Project 一つ前のコミットがないため、同時にダウンロードが行えません。' );
+		}
+		return false;
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function latest_commit_of_main_check( row ) {
+		var value = dataView.getItem( row );
+		if ( value['branches'][value['branch_no']]['name'] != value['default_branch'] ) return true;
+		if ( value['commit_no'] != 0 ) return true;
+		return false;
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function previous_commit_check( row ) {
+		var value = dataView.getItem( row );
+		var branch = value['branches'][value['branch_no']];
+		if ( branch['commits'][value['commit_no']]['parent_ids']['length'] != 0 ) return true;
+		return false;
+	}
+
+	////////////////////////////////////////////////////////////////////
+	function checkout_checkbox( checkbox_id ) {
+		let element = document.getElementById(checkbox_id);
+		element.checked = false;
+		update_open_diff_button();
+	}
+
+	function update_open_diff_button() {
+		var selectedrows = grid.getSelectedRows();
+		var enabled = selectedrows.length != 0 &&
+								( $( '#download_latest_commit_of_main' ).prop( 'checked' ) ||
+								$( '#download_previous_commit' ).prop( 'checked' ) );
+		var title = '';
+		if ( enabled ) {
+			title = ( $( '#download_latest_commit_of_main' ).prop( 'checked' ) ? '最新のデフォルトブランチ' : '１つ前のコミット' ) + 'との diff を表示します';
+		}
+		$( '#open_diff' ).prop( 'disabled', !enabled ).prop( 'title', title );;
+	}
+
 </script>
 
 </head>
@@ -1454,7 +1713,9 @@
 </select></td>
 <td style="width:120px;">&nbsp;</td>
 <td><input type="checkbox" id="including_project"><label style="font-size:14px" for="including_project">プロジェクト名を含んでダウンロード</label></td>
-<td style="width:330px;">&nbsp;</td>
+<td><input type="checkbox" id="download_latest_commit_of_main" onclick="checkout_checkbox('download_previous_commit')"><label
+style="font-size:14px" for="download_latest_commit_of_main">最新のデフォルトブランチと同時にダウンロード</label></td>
+</td>
 </tr>
 
 <tr>
@@ -1465,7 +1726,8 @@
 </select></td>
 <td>&nbsp;</td>
 <td><label style="font-size:14px">ダウンロードファイル名：<input type="text" size="20" value="" id="download_file_name"></label></td>
-<td>&nbsp;</td>
+<td><input type="checkbox" id="download_previous_commit" onclick="checkout_checkbox('download_latest_commit_of_main')"><label
+style="font-size:14px" for="download_previous_commit">一つ前のコミットと同時にダウンロード</label></td>
 </tr>
 
 <tr>
@@ -1475,7 +1737,7 @@
 </select></td>
 <td>&nbsp;</td>
 <td>&nbsp;</td>
-<td>&nbsp;</td>
+<td><button id="open_diff" title="">diff 表示</button></td>
 </tr>
 
 <tr>

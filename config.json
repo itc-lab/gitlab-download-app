@@ -10,5 +10,8 @@
 	"//session_cookie_name": "mod_auth_openidc_session",
 	"session_cookie_name": "session",
 	"default_download_name_maxlength": 255,
-	"default_download_name": "gitlab"
+	"default_download_name": "gitlab",
+	"download_name_selected_commit": "selected/",
+	"download_name_latest_commit_of_main": "latest_main/",
+	"download_name_previous_commit": "previous/"
 }

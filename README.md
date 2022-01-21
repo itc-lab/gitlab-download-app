@@ -1,13 +1,14 @@
 # GitLab Download App
 
-Batch download web app using GitLab API powered by PHP
+Batch download / Diff(Comparing changes) web app using GitLab API powered by PHP
 
-| ![GitLab Download App Demo](https://user-images.githubusercontent.com/76575923/148775077-a95f4382-750a-4a67-a075-794a786ddf27.gif) |
+| ![GitLab Download App Demo](https://user-images.githubusercontent.com/76575923/150256013-ef659c55-efa0-4588-a699-cd1b21f632ee.gif) |
 | :--------------------------------------------------------------------------------------------------------------------------------: |
 
 ## Features
 
 - List all branches of a group / project, tag name, and commit timestamp
+- Quickly show Diff(Comparing changes)
 - Download past commits
 - Batch download as .tar.gz or .zip
 - Download only the difference from the previous commit
@@ -27,11 +28,62 @@ Batch download web app using GitLab API powered by PHP
 - GitLab
 - PHP
 
-_**Warning:** Tested only under a locally installed GitLab CE, PHP8 on Ubuntu 20.04.2 LTS._
+_**Warning:** Tested only under a locally installed GitLab CE, PHP8 on Ubuntu 20.04.2 LTS / PHP8 and openresty installed on Docker._
+
+## Usage
+
+How to use is explained in the movie gif at [USAGE.md](USAGE.md).
 
 ## Deployment
 
 Example for a deployment on the same server as GitLab is in [DEPLOY.md](DEPLOY.md).
+
+### Docker
+
+If you use Docker, you can get started quickly.
+_**Warning:** GitLab must be up and running and ready in advance._
+
+Install the SSL KEY and certificate.
+
+```
+./docker/openresty/certs/server.crt
+./docker/openresty/certs/server.key
+```
+
+Change the host name to the host name of GitLab to be linked.
+
+```
+./.env
+./config.json
+./docker/openresty/conf.d/default.conf
+```
+
+Change the IP address to the IP address of GitLab to be linked.
+
+```
+./.env
+```
+
+Change appropriately. See "Getting started" below for more information.
+
+```
+./function.inc
+./config.json
+```
+
+```
+docker-compose up
+```
+
+or
+
+```
+docker-compose up -d
+```
+
+to start it.
+
+Access `https://localhost/`.
 
 ## Getting started
 
@@ -72,9 +124,16 @@ define("ACCESS_TOKEN", "ADbHuxHKc2teKxyyJBNy");
   "max_message_length": <Maximum number of characters in commit message>,
   "group": <Permission group when archiving with .tar.gz>,
   "user": <Permission user when archiving with .tar.gz>,
-  "session_cookie_name": <SSO Session Cookie Name>",
+  "session_cookie_name": <SSO Session Cookie Name>,
   "default_download_name_maxlength": <Maximum length of download file name for .zip/.tar.gz>,
-  "default_download_name": <Download file name for .zip/.tar.gz>
+  "default_download_name": <Download file name for .zip/.tar.gz>,
+  "download_name_selected_commit": <When "Download with the latest default branch" is checked,
+                                    or "Download with the previous commit" is checked,
+                                    the selected commit will be downloaded to the "selected/" folder.>
+  "download_name_latest_commit_of_main": <When "Download with the latest default branch" is checked,
+                                          the latest default branch commit will be downloaded to the "latest_main/" folder.>
+  "download_name_previous_commit": <When "Download with the previous commit" is checked,
+                                    the previous commit will be downloaded to the "previous/" folder.>
 }
 ```
 
@@ -88,6 +147,8 @@ define("ACCESS_TOKEN", "ADbHuxHKc2teKxyyJBNy");
 | :-------------------------------------------------------------------------------------------------------------------: |
 
 ### Register crontab
+
+refresh_projects_json.php refreshes the project list cache. This is not necessary if you use Docker.
 
 ```
 # crontab -u gitlab-www -e
@@ -105,6 +166,7 @@ In the following configuration, the user running the web app is gitlab-www, and 
 - [jQuery](https://jquery.com/)
 - [SlickGrid - jQuery plugin](https://slickgrid.net/)
 - [blockUI - jQuery plugin](https://malsup.com/jquery/block/)
+- [diff2html](https://diff2html.xyz/)
 
 ## License
 

@@ -1,0 +1,139 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title></title>
+
+<!-- CSS -->
+<link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/9.9.0/styles/github.min.css">
+<link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/diff2html/bundles/css/diff2html.min.css" />
+
+<style type="text/css">
+	html, body {
+		width: 100%;
+		height: 100%;
+		margin: 0;
+		padding: 0;
+	}
+	select {
+		min-width: 160px;
+	}
+	#head {
+		position: fixed;
+		display: flex;
+		background: #fff;
+		width: 100%;
+		height: 40px;
+		margin: 0;
+		align-items: center;
+		z-index: 99;
+	}
+	#diff {
+		padding-top: 40px;
+		margin: 0 auto;
+		width: 100%;
+	}
+	.d2h-file-side-diff {
+		vertical-align: top;
+	}
+	.d2h-file-side-diff tr {
+		height: 18px;
+	}
+</style>
+
+<!-- Javascripts -->
+<script type="text/javascript" src="./js/SlickGrid/lib/jquery-1.11.2.js"></script>
+<script type="text/javascript" src="https://cdn.jsdelivr.net/npm/diff2html/bundles/js/diff2html-ui-slim.min.js"></script>
+
+<script type="text/javascript">
+
+	var queries = {};
+	var configuration = {
+		drawFileList: true,
+		matching: 'lines',
+		outputFormat: 'side-by-side'
+	};
+	var diff_string;
+
+	$(function () {
+		var query = window.location.search.slice(1);
+		query.split('&').forEach( function( str ) {
+			var arr = str.split( '=' );
+			queries[arr[0]] = arr[1];
+		} );
+		console.log( queries );
+		http_request( 'GET', './gitlabapp.php', { command: 'diff', id: queries['id'] }, {},
+		function( response ) {
+			diff_string = response;
+			const targetElement = document.getElementById('diff');
+			diff2htmlUi = new Diff2HtmlUI(targetElement, diff_string, configuration);
+			diff2htmlUi.draw();
+			$( '[class$="\-file\-name"]' ).each( function( idx ) {
+				$( this ).text($( this ).text().replace(/\"/, ''));
+			} );
+		},
+		function( e ) {
+			alert( e );
+		} );
+
+		$( '#style' )
+		.prop( 'selectedIndex', 0 )
+		.on( 'change', function() {
+			var style = $( '#style' ).val();;
+			configuration.outputFormat = style;
+			const targetElement = document.getElementById('diff');
+			diff2htmlUi = new Diff2HtmlUI(targetElement, diff_string, configuration);
+			diff2htmlUi.draw();
+			$( '[class$="\-file\-name"]' ).each( function( idx ) {
+				$( this ).text($( this ).text().replace(/\"/, ''));
+			} );
+		} );
+	} );
+
+	////////////////////////////////////////////////////////////////////
+	function http_request( method, url, data, headers, succeed, failed ) {
+		$.ajax( { type: method,
+					url: url,
+					data: data,
+					headers: headers,
+					crossDomain: true,
+					xhrFields: {
+						withCredentials: true
+					},
+					cache: false
+		} ).then(
+			function( data, textStatus, errorThrown ) {
+				succeed( data );
+			},
+			function( XMLHttpRequest, textStatus, errorThrown ) {
+					console.log( textStatus );
+					var e = XMLHttpRequest.responseText;
+					if ( e.match( /<title>([\s\S]+)<\/title>[\s\S]+<body>([\s\S]+)<\/body>/ ) ) {
+						e = RegExp.$1 + RegExp.$2;
+						e = e.replace( '<p>', '' )
+						e = e.replace( '</p>', '' )
+						e = e.replace( '<h1>', '' )
+						e = e.replace( '</h1>', '' )
+						failed( e );
+					} else {
+						failed( $('<div/>').text(e).html() );
+					}
+				} );
+	}
+
+</script>
+
+</head>
+
+<body>
+
+<header id="head">
+&nbsp;Style: &nbsp;<select id="style">
+<option value="side-by-side">Split
+<option value="line">Unified
+</select>
+</header>
+<div id="diff"></div>
+
+</body>
+</html>

@@ -1,0 +1,33 @@
+version: '3'
+services:
+  openresty:
+    build: ./docker/openresty
+    ports:
+      - 80:80
+      - 443:443
+    extra_hosts:
+      - "${GITLAB_HOST_NAME}:${GITLAB_IP_ADDRESS}"
+    volumes:
+      - ./docker/openresty/nginx.conf:/usr/local/openresty/nginx/conf/nginx.conf
+      - ./docker/openresty/conf.d:/etc/nginx/conf.d
+      - ./docker/openresty/certs:/etc/nginx/certs
+      - ./index.html:/opt/gitlab-download-app/www/html/index.html
+      - ./dispdiff.html:/opt/gitlab-download-app/www/html/dispdiff.html
+      - ./js:/opt/gitlab-download-app/www/html/js
+      - ./css:/opt/gitlab-download-app/www/html/css
+      - ./config.json:/opt/gitlab-download-app/www/html/config.json
+    depends_on:
+      - php
+
+  php:
+    build: ./docker/php
+    volumes:
+      - ./docker/php/php.ini:/usr/local/etc/php/conf.d/php.ini
+      - ./docker/php/crontab:/etc/crontabs/www-data
+      - ./function.inc:/opt/gitlab-download-app/www/html/function.inc
+      - ./gitlabapp.php:/opt/gitlab-download-app/www/html/gitlabapp.php
+      - ./proxyproc.php:/opt/gitlab-download-app/www/html/proxyproc.php
+      - ./recvfile.php:/opt/gitlab-download-app/www/html/recvfile.php
+      - ./refresh_projects_json.php:/opt/gitlab-download-app/www/html/refresh_projects_json.php
+      - ./update_projects_json.php:/opt/gitlab-download-app/www/html/update_projects_json.php
+      - ./config.json:/opt/gitlab-download-app/www/html/config.json

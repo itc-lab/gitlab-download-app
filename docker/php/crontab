@@ -1,0 +1,1 @@
+0 * * * * cd /opt/gitlab-download-app/www/html && /usr/local/bin/php refresh_projects_json.php

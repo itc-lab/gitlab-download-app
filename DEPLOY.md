@@ -34,7 +34,7 @@ Please enter the following 'extra' attributes
 to be sent with your certificate request
 A challenge password []:
 An optional company name []:
-# echo "subjectAltName=DNS:*.itccorporation.jp,IP:192.168.12.111" > san.txt
+# echo "subjectAltName=DNS:*.itccorporation.jp,IP:192.168.xxx.xxx" > san.txt
 # openssl x509 -req -days 365 -in ca.csr -signkey ca.key -out ca.crt -extfile san.txt
 Signature ok
 subject=C = JP, ST = Aichi, L = Toyota, O = Default Company Ltd, CN = test.itccorporation.jp
@@ -153,7 +153,7 @@ Please enter the following 'extra' attributes
 to be sent with your certificate request
 A challenge password []:
 An optional company name []:
-# echo "subjectAltName=DNS:*.itccorporation.jp,IP:192.168.11.11" > san2.txt
+# echo "subjectAltName=DNS:*.itccorporation.jp,IP:192.168.xxx.xxx" > san2.txt
 # openssl x509 -req -days 365 -in ca2.csr -signkey ca2.key -out ca2.crt -extfile san2.txt
 # cp ca2.crt /etc/pki/tls/certs/ca2.crt
 # cp ca2.key /etc/pki/tls/private/ca2.key
@@ -178,6 +178,11 @@ server
   root /opt/gitlab-download-app/www/html;
   index index.html index.htm index.php;
   access_by_lua_block {
+    local uri = ngx.var.request_uri
+    local ua = ngx.req.get_headers()['User-Agent']
+    if uri ~= nil and string.match(uri, "update_projects_json%.php$") ~= nil and ua ~= nil and string.match(ua, "GitLab/%d+%.%d+%.?%d*$") ~= nil then
+      return
+    end
     local opts = {
       ssl_verify = "no",
       scope = "openid email",

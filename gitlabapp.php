@@ -127,6 +127,17 @@
             posix_kill($pid, 15 /*SIGTERM*/);
             exit;
         }
+    } elseif ($_REQUEST["command"] == "diff") {
+        if (isset($_REQUEST["id"]) && file_exists(CACHE_DIR . "{$_REQUEST["id"]}/request.json")) {
+            $tmp = CACHE_DIR . $_REQUEST["id"] . "/";
+            $req = json_decode(file_get_contents("{$tmp}request.json"), true);
+            $diff_file = "{$tmp}{$req["download_file_name"]}.diff";
+            header("Content-Type: text/plain");
+            if (file_exists($diff_file)) {
+                readfile($diff_file);
+            }
+            exit;
+        }
     } elseif ($_REQUEST["command"] == "logout") {
         setcookie($config["session_cookie_name"], "", time() - 3600, "/");
         $result["result"] = "OK";
