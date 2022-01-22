@@ -93,7 +93,9 @@ The selected commits will be downloaded to the "selected/" folder and the previo
 ## Diff(Comparing changes)
 
 You can see the latest default branch or the diff with the previous commit.  
-This app uses the diff command without using the GitLab API. <span style="color: red;"><strong>GitLab diff has a limit on the number of lines, but this screen has no limit.</strong></span> Instead, a large number of lines may delay the display.
+This app uses the diff command without using the GitLab API.  
+<strong>GitLab diff has a limit on the number of lines, but this screen has no limit.</strong>  
+Instead, a large number of lines may delay the display.
 
 | ![Diff(Comparing changes)](https://user-images.githubusercontent.com/76575923/150269297-b3d5d574-5f0e-4310-ba7c-d51c338c15e6.gif) |
 | :-------------------------------------------------------------------------------------------------------------------------------: |

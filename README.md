@@ -40,7 +40,7 @@ Example for a deployment on the same server as GitLab is in [DEPLOY.md](DEPLOY.m
 
 ### Docker
 
-If you use Docker, you can get started quickly.
+If you use Docker, you can get started quickly.  
 _**Warning:** GitLab must be up and running and ready in advance._
 
 Install the SSL KEY and certificate.
