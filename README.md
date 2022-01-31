@@ -140,7 +140,7 @@ define("ACCESS_TOKEN", "ADbHuxHKc2teKxyyJBNy");
 ### Register System Hook
 
 `Admin Area -> System Hooks`  
-**URL:** https://gitlab-download-app.itccorporation.jp/update_projects_json.php  
+**URL:** `https://gitlab-download-app.itccorporation.jp/update_projects_json.php`  
 **Secret token:** ADbHuxHKc2teKxyyJBNy  
 **Trigger:** Push events, Tag push events
 | ![System Hooks](https://user-images.githubusercontent.com/76575923/148754112-6df3e076-ca1c-4915-b00c-f36e377c4f57.png) |
