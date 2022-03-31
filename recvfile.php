@@ -77,11 +77,11 @@
     $download_file_name = $req["download_file_name"];
     if ($req["type"] == "tar.gz") {
         $target = $download_file_name . ".tar.gz";
-        $cmd = "cd ${tmp}${download_file_name} && tar czf ../{$target} * --owner=${config["user"]} --group=${config["group"]} --hard-dereference";
+        $cmd = "cd ${tmp}${download_file_name} && tar czf ../{$target} ./ --owner=${config["user"]} --group=${config["group"]} --hard-dereference";
         exec($cmd, $so, $rt);
     } elseif ($req["type"] == "zip") {
         $target = $download_file_name . ".zip";
-        $cmd = "cd ${tmp}${download_file_name} && zip -r ../{$target} *";
+        $cmd = "cd ${tmp}${download_file_name} && zip -r ../{$target} ./";
         exec($cmd, $so, $rt);
     } elseif ($req["type"] == "diff") {
         $target = $download_file_name . ".diff";
