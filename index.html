@@ -303,50 +303,43 @@
 			var item = {};
 			if ( target_branch == 'Branch' ) {
 				var branch = value['branches'][value['branch_no']];
-				var commits = get_all ? branch['commits'].slice( value['commit_no'] ) : [ branch['commits'][value['commit_no']] ];
-				var get_tree = get_all;
-				if ( simul_download_flag == 'On' ) {
-					add_path = config['download_name_selected_commit'];
+				var commits = [];
+				if ( get_all ) {
+					commits = branch['commits'].slice( value['commit_no'] );
 				} else {
-					add_path = '';
-				}
-				while ( commits.length ) {
-					var commit = commits.pop();
-					item = {
-						id: value.id,
-						path: value.path,
-						name: value.project,
-						commit: commit['id'],
-						time: new Date( commit['committed_date'] ).toGMTString(),
-						add_path: add_path
-					};
-					if ( get_tree ) item['tree'] = true;
-					download_projects.push( item );
-					get_tree = false;
+					commits = branch['commits'].slice( value['commit_no'], value['commit_no'] + 2 );
 				}
 			} else {
 				var tag = value['tags'][value['branch_no']];
-				var commits = get_all ? tag['commits'].slice( value['commit_no'] ) : [ tag['commits'][value['commit_no']] ];
-				var get_tree = get_all;
-				while ( commits.length ) {
-					var commit = commits.pop();
+				var commits = [];
+				if ( get_all ) {
+					commits = tag['commits'].slice( value['commit_no'] );
+				} else {
+					commits = tag['commits'].slice( value['commit_no'], value['commit_no'] + 2 );
+				}
+			}
 					if ( simul_download_flag == 'On' ) {
 						add_path = config['download_name_selected_commit'];
 					} else {
 						add_path = '';
 					}
+			var from = false;
+			var len = commits.length;
+			while ( commits.length ) {
+				var commit = commits.pop();
+				if ( len == 1 || get_all || from ) {
 					item = {
 						id: value.id,
 						path: value.path,
 						name: value.project,
 						commit: commit['id'],
 						time: new Date( commit['committed_date'] ).toGMTString(),
-						add_path: add_path
+						add_path: add_path,
+						from: from
 					};
-					if ( get_tree ) item['tree'] = true;
 					download_projects.push( item );
-					get_tree = false;
 				}
+				from = commit['id'];
 			}
 			if ( simul_download_flag == 'On' ) {
 				if ( $( '#download_latest_commit_of_main' ).prop( 'checked' ) ) {
@@ -370,7 +363,7 @@
 			}
 		}
 		var commits = branch['commits'].slice(0);
-		var get_tree = true;
+		var from = false;
 		while ( commits.length ) {
 			var commit = commits.pop();
 			item = {
@@ -379,11 +372,11 @@
 				name: value.project,
 				commit: commit['id'],
 				time: new Date( commit['committed_date'] ).toGMTString(),
-				add_path: config['download_name_latest_commit_of_main']
+				add_path: config['download_name_latest_commit_of_main'],
+				from: from
 			};
-			if ( get_tree ) item['tree'] = true;
 			download_projects.push( item );
-			get_tree = false;
+			from = commit['id'];
 		}
 		console.log( 'download projects: ', download_projects );
 	}
@@ -400,7 +393,7 @@
 			}
 		}
 		var commits = branch['commits'].slice( n )
-		var get_tree = true;
+		var from = false;
 		while ( commits.length ) {
 			var commit = commits.pop();
 			item = {
@@ -409,11 +402,11 @@
 				name: value.project,
 				commit: commit['id'],
 				time: new Date( commit['committed_date'] ).toGMTString(),
-				add_path: config['download_name_previous_commit']
+				add_path: config['download_name_previous_commit'],
+				from: from
 			};
-			if ( get_tree ) item['tree'] = true;
 			download_projects.push( item );
-			get_tree = false;
+			from = commit['id'];
 		}
 		console.log( 'download projects: ', download_projects );
 	}
@@ -846,7 +839,6 @@
 			}
 			break;
 		case 'compare':
-			console.log( 'compare: ', response );
 			response = response.diffs;
 			for ( var n = 0; n < response.length; n ++ ) {
 				response[n]['project'] = download_projects[project_no].id;
@@ -1049,10 +1041,9 @@
 
 	////////////////////////////////////////////////////////////////////
 	function request_tree_diff() {
-		if ( download_projects[project_no]['tree'] ) {
+		if ( !download_projects[project_no]['from'] ) {
 			request_tree();
 		} else {
-			////request_diff();
 			request_compare();
 		}
 	}
@@ -1085,7 +1076,7 @@
 	function request_compare() {
 		request_id = download_projects[project_no].id;
 		request_commit = download_projects[project_no].commit;
-		var from = download_projects[project_no - 1].commit;
+		var from = download_projects[project_no]['from'];
 		var url = config['url'] + 'api/v4/projects/' + request_id + '/repository/compare';
 		var headers = {};
 		var data = { to: request_commit, from: from, REQUEST_URL: url };
